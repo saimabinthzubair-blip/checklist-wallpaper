@@ -13,42 +13,31 @@ class ChecklistWallpaperService : WallpaperService() {
 
     inner class ChecklistEngine : Engine() {
 
-        private val prefs = getSharedPreferences("checklist", Context.MODE_PRIVATE)
+        private val prefs by lazy { applicationContext.getSharedPreferences("checklist", Context.MODE_PRIVATE) }
 
         // Edit your tasks here
         private val items = listOf("Water plants", "Reply to emails", "Gym", "Read 20 min")
-        private val checked = BooleanArray(items.size) { prefs.getBoolean("item$it", false) }
+        private val checked = BooleanArray(items.size)
 
-        private val titlePaint = Paint().apply {
-            color = Color.WHITE
-            textSize = 90f
-            isAntiAlias = true
-        }
-        private val textPaint = Paint().apply {
-            color = Color.WHITE
-            textSize = 60f
-            isAntiAlias = true
-        }
-        private val boxPaint = Paint().apply {
-            color = Color.WHITE
-            style = Paint.Style.STROKE
-            strokeWidth = 6f
-            isAntiAlias = true
-        }
-        private val tickPaint = Paint().apply {
-            color = Color.GREEN
-            style = Paint.Style.STROKE
-            strokeWidth = 10f
-            isAntiAlias = true
-        }
+        private val titlePaint = Paint().apply { color = Color.WHITE; textSize = 90f; isAntiAlias = true }
+        private val textPaint = Paint().apply { color = Color.WHITE; textSize = 60f; isAntiAlias = true }
+        private val boxPaint = Paint().apply { color = Color.WHITE; style = Paint.Style.STROKE; strokeWidth = 6f; isAntiAlias = true }
+        private val tickPaint = Paint().apply { color = Color.GREEN; style = Paint.Style.STROKE; strokeWidth = 10f; isAntiAlias = true }
 
         private val startY = 400f
         private val rowHeight = 140f
         private val boxLeft = 120f
         private val boxSize = 70f
 
-        init {
+        override fun onCreate(surfaceHolder: SurfaceHolder) {
+            super.onCreate(surfaceHolder)
             setTouchEventsEnabled(true)
+            // Load saved ticks safely
+            try {
+                items.indices.forEach { i -> checked[i] = prefs.getBoolean("item$i", false) }
+            } catch (e: Exception) {
+                // If loading fails, start with everything unchecked
+            }
         }
 
         override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
@@ -67,7 +56,11 @@ class ChecklistWallpaperService : WallpaperService() {
                     val top = startY + i * rowHeight
                     if (event.y in top..(top + rowHeight)) {
                         checked[i] = !checked[i]
-                        prefs.edit().putBoolean("item$i", checked[i]).apply()
+                        try {
+                            prefs.edit().putBoolean("item$i", checked[i]).apply()
+                        } catch (e: Exception) {
+                            // Ignore save errors so the wallpaper keeps working
+                        }
                         draw()
                     }
                 }
@@ -75,8 +68,13 @@ class ChecklistWallpaperService : WallpaperService() {
         }
 
         private fun draw() {
-            val holder = surfaceHolder
-            val canvas = holder.lockCanvas() ?: return
+            if (!isPreview.not() && !surfaceHolder.surface.isValid) return
+            val canvas = try {
+                surfaceHolder.lockCanvas()
+            } catch (e: Exception) {
+                null
+            } ?: return
+
             try {
                 canvas.drawColor(Color.parseColor("#1E1E2E"))
                 canvas.drawText("To Do", boxLeft, 250f, titlePaint)
@@ -95,7 +93,7 @@ class ChecklistWallpaperService : WallpaperService() {
                     canvas.drawText(label, boxLeft + boxSize + 40, boxTop + 52, textPaint)
                 }
             } finally {
-                holder.unlockCanvasAndPost(canvas)
+                surfaceHolder.unlockCanvasAndPost(canvas)
             }
         }
     }
